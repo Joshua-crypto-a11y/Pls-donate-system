@@ -1,0 +1,40 @@
+local DataStoreService = game:GetService("DataStoreService")
+local booth = workspace:WaitForChild("YourBoothModel")
+local earningsPart = booth:FindFirstChild("EarningsPart")
+local BoothEarningsStore = DataStoreService:GetDataStore("BoothEarnings")
+
+if not earningsPart then
+    earningsPart = Instance.new("Part")
+    earningsPart.Name = "EarningsPart"
+    earningsPart.Size = Vector3.new(4,1,4)
+    earningsPart.Anchored = true
+    earningsPart.Position = (booth.PrimaryPart and booth.PrimaryPart.Position or booth:GetModelCFrame().p)+Vector3.new(0,2,12)
+    earningsPart.Parent = booth
+end
+
+if not earningsPart:FindFirstChildOfClass("ProximityPrompt") then
+    local prompt = Instance.new("ProximityPrompt")
+    prompt.ActionText = "Claim Earnings"
+    prompt.ObjectText = "Booth"
+    prompt.KeyboardKeyCode = Enum.KeyCode.E
+    prompt.HoldDuration = 0
+    prompt.Parent = earningsPart
+
+    prompt.Triggered:Connect(function(player)
+        local key=tostring(player.UserId)
+        local success,pending=pcall(function() return BoothEarningsStore:GetAsync(key) end)
+        if not success then warn("Failed read for",player.Name) return end
+        pending=pending or 0
+        if pending<=0 then return end
+
+        local ok,err=pcall(function()
+            BoothEarningsStore:UpdateAsync(key,function() return 0 end)
+        end)
+        if not ok then warn("Failed clear for",player.Name,err) return end
+
+        local claimedStore=DataStoreService:GetDataStore("BoothClaimed")
+        pcall(function() claimedStore:UpdateAsync(key,function(old) return (old or 0)+pending end) end)
+
+        print(player.Name.." claimed "..pending.." Robux (recorded).")
+    end)
+end
