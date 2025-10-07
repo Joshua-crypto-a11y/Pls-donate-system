@@ -1,0 +1,81 @@
+local Players = game:GetService("Players")
+local MarketplaceService = game:GetService("MarketplaceService")
+local DataStoreService = game:GetService("DataStoreService")
+
+local booth = workspace:WaitForChild("YourBoothModel")
+local BoothEarningsStore = DataStoreService:GetDataStore("BoothEarnings")
+local boothOwner = nil
+
+local donationTiers = {
+    {Name = "SmallDonateButton", ProductId = 0, Offset = Vector3.new(-6,2,0)},
+    {Name = "MediumDonateButton", ProductId = 0, Offset = Vector3.new(0,2,0)},
+    {Name = "LargeDonateButton", ProductId = 0, Offset = Vector3.new(6,2,0)}
+}
+
+for i, tier in ipairs(donationTiers) do
+    local existing = booth:FindFirstChild(tier.Name)
+    if not existing then
+        local part = Instance.new("Part")
+        part.Name = tier.Name
+        part.Size = Vector3.new(4,1,4)
+        part.Anchored = true
+        part.CanCollide = false
+        part.Position = (booth.PrimaryPart and booth.PrimaryPart.Position or booth:GetModelCFrame().p)+tier.Offset
+        part.Parent = booth
+    end
+    local part = booth:FindFirstChild(tier.Name)
+    if part and not part:FindFirstChildOfClass("ClickDetector") then
+        local click = Instance.new("ClickDetector")
+        click.MaxActivationDistance = 32
+        click.Parent = part
+        click.MouseClick:Connect(function(player)
+            if tier.ProductId and tier.ProductId~=0 then
+                MarketplaceService:PromptProductPurchase(player,tier.ProductId)
+            else
+                warn("ProductId not set:",tier.Name)
+            end
+        end)
+    end
+end
+
+MarketplaceService.ProcessReceipt=function(receiptInfo)
+    local buyer=Players:GetPlayerByUserId(receiptInfo.PlayerId)
+    if not buyer then return Enum.ProductPurchaseDecision.NotProcessedYet end
+    if boothOwner then
+        local key=tostring(boothOwner.UserId)
+        local ok,err=pcall(function()
+            BoothEarningsStore:UpdateAsync(key,function(old) return (old or 0)+receiptInfo.CurrencySpent end)
+        end)
+        if not ok then warn("Failed credit owner:",err)
+        else print(buyer.Name.." donated "..receiptInfo.CurrencySpent.." to "..boothOwner.Name)
+        end
+    else
+        print(buyer.Name.." donated but no owner. Granted.")
+    end
+    return Enum.ProductPurchaseDecision.PurchaseGranted
+end
+
+local claimPart=booth:FindFirstChild("ClaimPart")
+if not claimPart then
+    claimPart=Instance.new("Part")
+    claimPart.Name="ClaimPart"
+    claimPart.Size=Vector3.new(4,1,4)
+    claimPart.Anchored=true
+    claimPart.Position=(booth.PrimaryPart and booth.PrimaryPart.Position or booth:GetModelCFrame().p)+Vector3.new(0,2,-6)
+    claimPart.Parent=booth
+end
+
+if not claimPart:FindFirstChildOfClass("ProximityPrompt") then
+    local prompt=Instance.new("ProximityPrompt")
+    prompt.ActionText="Claim Booth"
+    prompt.ObjectText="Booth"
+    prompt.KeyboardKeyCode=Enum.KeyCode.E
+    prompt.HoldDuration=0
+    prompt.Parent=claimPart
+    prompt.Triggered:Connect(function(player)
+        if not boothOwner then
+            boothOwner=player
+            print(player.Name.." is now the booth owner")
+        end
+    end)
+end
